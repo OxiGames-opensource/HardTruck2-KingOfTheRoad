@@ -1,0 +1,60 @@
+# Project ignores
+
+# Runtime/cache/logs
+*.log
+.cache/
+tmp/
+var/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local configs
+.env
+.env.local
+.env.*.local
+
+# Game / proprietary files
+*.exe
+*.dll
+*.avi
+*.bik
+*.mp3
+*.wav
+*.ogg
+*.res
+*.bne
+*.dat
+*.pak
+
+# Archives / installers
+*.zip
+*.7z
+*.rar
+*.iso
+*.bin
+*.cue
+
+# Steam / Proton / Wine
+compatdata/
+pfx/
+drive_c/
+steamapps/
+*.acf
+
+# Ghidra workspace / generated analysis
+ghidra-work/
+*.gpr
+*.rep/
+*.lock
+*.log4j
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

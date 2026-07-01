@@ -1,0 +1,11 @@
+name: ${COMPOSE_PROJECT_NAME}
+
+services: {}
+
+networks:
+  internal_net:
+    driver: bridge
+
+  shared:
+    name: ${SHARED_NETWORK_NAME}
+    external: true
