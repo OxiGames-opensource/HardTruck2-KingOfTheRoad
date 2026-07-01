@@ -27,6 +27,7 @@ RUN chmod +x /usr/local/bin/shell-comfort.sh \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     wget \
+    tree \
     unzip \
     file \
     binutils \

@@ -46,15 +46,36 @@ drive_c/
 steamapps/
 *.acf
 
-# Ghidra workspace / generated analysis
-ghidra-work/
-*.gpr
-*.rep/
-*.lock
-*.log4j
-
 # Python
 __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Ghidra local project files
+ghidra/project/*
+!ghidra/project/.gitkeep
+!ghidra/project/README.md
+
+# Ghidra workspace files
+ghidra/workspace/*
+!ghidra/workspace/.gitkeep
+!ghidra/workspace/README.md
+
+# Ghidra script runtime results
+ghidra/scripts/modules/*/result/*
+!ghidra/scripts/modules/*/result/.gitkeep
+
+# Ghidra workspace / generated analysis
+ghidra-work/
+*.gpr
+*.rep
+*.rep/
+*.gbf
+*.sar
+*.lock
+*.log4j
+
+# Local development notes
+dev-notes/*
+!dev-notes/README.md
