@@ -1,19 +1,19 @@
 {
-    "id": "TextureMemory",
-    "title": "Texture Memory",
-    "description": "Bypasses an incorrect texture memory failure check on modern systems.",
+    "id": "DisplayModeDetection",
+    "title": "Display Mode Detection",
+    "description": "Forces display mode detection to succeed on modern systems where the original check may fail incorrectly.",
     "target": {
         "file": "king.exe"
     },
     "patches": [
         {
             "type": "bytes",
-            "virtualAddress": "0x00513024",
-            "fileOffset": "0x00113024",
+            "virtualAddress": "0x005155be",
+            "fileOffset": "0x001155be",
             "section": ".text",
-            "oldBytes": "7d 1e",
-            "newBytes": "eb 1e",
-            "size": 2
+            "oldBytes": "f7 d8 1b c0 f7 d8 85 c0",
+            "newBytes": "b8 01 00 00 00 85 c0 90",
+            "size": 8
         }
     ],
     "status": "implemented",
@@ -25,11 +25,11 @@
         "Proton"
     ],
     "relatedResearch": [
-        "app/research/TextureMemory/Notes.md"
+        "app/research/GpuDetection/Notes.md"
     ],
     "notes": [
         "This patch preserves the original patch size.",
-        "The original conditional jump is replaced with an unconditional jump.",
+        "The final byte is padded with NOP.",
         "The patch is intended only to improve compatibility on modern systems."
     ]
 }
