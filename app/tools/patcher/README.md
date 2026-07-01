@@ -4,29 +4,48 @@
 
 The patcher is intended to be used only with legally obtained copies of supported games.
 
-## Purpose
-
-The patcher provides a reproducible way to:
-
-- list available patches;
-- inspect patch status;
-- apply selected patches;
-- apply all available patches;
-- rollback selected patches byte-by-byte;
-- rollback all patches byte-by-byte;
-- create a backup before the first modification;
-- restore the original executable from backup;
-- verify bytes before patching or rolling back;
-- avoid distributing original game files.
-
 ## Repository Location
 
 ```text
 app/tools/patcher/
 ├── README.md
 ├── Build.md
+├── core.py
+├── gui.py
 └── run.py
 ```
+
+## Architecture
+
+The patcher is split into three layers.
+
+### `core.py`
+
+Contains the patching logic:
+
+- patch metadata loading;
+- target file resolution;
+- byte status detection;
+- backup creation;
+- patch application;
+- byte-level rollback;
+- full restore from backup.
+
+`core.py` does not print CLI output and does not depend on GUI code.
+
+### `run.py`
+
+Command-line interface.
+
+It parses arguments, calls `core.py`, and prints human-readable output.
+
+### `gui.py`
+
+GUI entry point.
+
+At this stage it is a placeholder for the upcoming Tkinter interface.
+
+The GUI will use the same `core.py` logic as the CLI.
 
 ## Patch Location
 
@@ -61,12 +80,6 @@ king.exe.oxigames-backup
 
 The backup is created only if it does not already exist.
 
-This means:
-
-- the first patching operation preserves the pre-OxiGames state;
-- later apply/rollback operations do not overwrite the backup;
-- `restore-original` restores the entire file from the backup.
-
 ## Rollback Model
 
 `rollback` does not restore the whole file from backup.
@@ -75,17 +88,6 @@ Instead, it reverses selected patches byte-by-byte:
 
 ```text
 newBytes -> oldBytes
-```
-
-This allows independent patch management.
-
-Example:
-
-```text
-Apply A
-Apply B
-Rollback A
-Result: B remains applied
 ```
 
 To restore the whole original executable, use:
@@ -107,93 +109,59 @@ python3 app/tools/patcher/run.py list
 ### Show Patch Status
 
 ```bash
-python3 app/tools/patcher/run.py status     --game "/path/to/Hard Truck 2 King of the Road"     --all
+python3 app/tools/patcher/run.py status \
+    --game "/path/to/Hard Truck 2 King of the Road" \
+    --all
 ```
 
 ### Apply Selected Patches
 
 ```bash
-python3 app/tools/patcher/run.py apply     --game "/path/to/Hard Truck 2 King of the Road"     DisplayModeDetection TextureMemory
+python3 app/tools/patcher/run.py apply \
+    --game "/path/to/Hard Truck 2 King of the Road" \
+    DisplayModeDetection TextureMemory
 ```
 
 ### Apply All Patches
 
 ```bash
-python3 app/tools/patcher/run.py apply     --game "/path/to/Hard Truck 2 King of the Road"     --all
+python3 app/tools/patcher/run.py apply \
+    --game "/path/to/Hard Truck 2 King of the Road" \
+    --all
 ```
 
 ### Rollback Selected Patches
 
 ```bash
-python3 app/tools/patcher/run.py rollback     --game "/path/to/Hard Truck 2 King of the Road"     DisplayModeDetection
+python3 app/tools/patcher/run.py rollback \
+    --game "/path/to/Hard Truck 2 King of the Road" \
+    DisplayModeDetection
 ```
 
 ### Rollback All Patches
 
 ```bash
-python3 app/tools/patcher/run.py rollback     --game "/path/to/Hard Truck 2 King of the Road"     --all
+python3 app/tools/patcher/run.py rollback \
+    --game "/path/to/Hard Truck 2 King of the Road" \
+    --all
 ```
 
 ### Restore Original File From Backup
 
 ```bash
-python3 app/tools/patcher/run.py restore-original     --game "/path/to/Hard Truck 2 King of the Road"
+python3 app/tools/patcher/run.py restore-original \
+    --game "/path/to/Hard Truck 2 King of the Road"
 ```
 
-## Game Path
+## GUI Preview
 
-`--game` can point either to:
-
-- the game directory;
-- the target executable itself.
-
-Examples:
+For now:
 
 ```bash
---game "/path/to/Hard Truck 2 King of the Road"
+python3 app/tools/patcher/gui.py
 ```
 
-```bash
---game "/path/to/Hard Truck 2 King of the Road/king.exe"
-```
-
-## Status Values
-
-The patcher can report:
-
-```text
-original
-```
-
-The current bytes match `oldBytes`.
-
-```text
-patched
-```
-
-The current bytes match `newBytes`.
-
-```text
-unknown
-```
-
-The bytes are neither original nor patched.
-
-This usually means the executable is from a different version or was modified by another tool.
-
-## Safety Rules
-
-The patcher:
-
-- never includes original game files;
-- checks `oldBytes` before applying a patch;
-- checks `newBytes` before rolling back a patch;
-- refuses to patch unknown bytes by default;
-- refuses to rollback unknown bytes by default;
-- creates a backup before the first modification;
-- never overwrites an existing backup;
-- can restore the full file from backup;
-- applies only patch data described in repository metadata.
+This only verifies that the future GUI entry point can load patch definitions through `core.py`.
 
 ## Legal Notice
 

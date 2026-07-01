@@ -2,10 +2,12 @@
 
 This document describes how to build release binaries for `OxiGames Patcher`.
 
-The source of truth is:
+## Source Files
 
 ```text
+app/tools/patcher/core.py
 app/tools/patcher/run.py
+app/tools/patcher/gui.py
 ```
 
 ## Requirements
@@ -19,35 +21,46 @@ Install PyInstaller:
 python3 -m pip install pyinstaller
 ```
 
-## Linux Build
+## CLI Linux Build
 
 From repository root:
 
 ```bash
-pyinstaller     --onefile     --name OxiGames-HardTruck2-Patcher-linux-x64     app/tools/patcher/run.py
+pyinstaller \
+    --onefile \
+    --name OxiGames-HardTruck2-Patcher-cli-linux-x64 \
+    app/tools/patcher/run.py
 ```
 
-Output:
-
-```text
-dist/OxiGames-HardTruck2-Patcher-linux-x64
-```
-
-## Windows Build
+## CLI Windows Build
 
 On Windows:
 
 ```powershell
 pyinstaller `
     --onefile `
-    --name OxiGames-HardTruck2-Patcher-windows-x64 `
+    --name OxiGames-HardTruck2-Patcher-cli-windows-x64 `
     app/tools/patcher/run.py
 ```
 
-Output:
+## Future GUI Linux Build
 
-```text
-dist/OxiGames-HardTruck2-Patcher-windows-x64.exe
+```bash
+pyinstaller \
+    --onefile \
+    --windowed \
+    --name OxiGames-HardTruck2-Patcher-linux-x64 \
+    app/tools/patcher/gui.py
+```
+
+## Future GUI Windows Build
+
+```powershell
+pyinstaller `
+    --onefile `
+    --windowed `
+    --name OxiGames-HardTruck2-Patcher-windows-x64 `
+    app/tools/patcher/gui.py
 ```
 
 ## Release Assets

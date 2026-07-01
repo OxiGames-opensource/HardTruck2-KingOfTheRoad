@@ -2,41 +2,19 @@
 from __future__ import annotations
 
 import argparse
-import json
-import shutil
 import sys
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
-
-BACKUP_SUFFIX = ".oxigames-backup"
-
-
-class PatcherError(RuntimeError):
-    pass
-
-
-@dataclass(frozen=True)
-class BytePatch:
-    patch_id: str
-    title: str
-    target_file: str
-    virtual_address: str
-    file_offset: int
-    section: str
-    old_bytes: bytes
-    new_bytes: bytes
-    size: int
-
-
-@dataclass(frozen=True)
-class PatchDefinition:
-    patch_id: str
-    title: str
-    description: str
-    path: Path
-    byte_patches: list[BytePatch]
+from core import (
+    PatcherError,
+    apply_patches,
+    default_patches_dir,
+    get_status,
+    load_all_patches,
+    restore_original,
+    rollback_patches,
+    select_patches,
+)
 
 
 def info(message: str) -> None:
@@ -55,246 +33,6 @@ def fail(message: str) -> None:
     print(f"[ERROR] {message}")
 
 
-def parse_hex_bytes(value: str) -> bytes:
-    try:
-        return bytes.fromhex(value)
-    except ValueError as exc:
-        raise PatcherError(f"Invalid hex byte string: {value}") from exc
-
-
-def parse_int(value: str | int) -> int:
-    if isinstance(value, int):
-        return value
-
-    text = value.strip()
-
-    if text.lower().startswith("0x"):
-        return int(text, 16)
-
-    return int(text, 10)
-
-
-def repository_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def default_patches_dir() -> Path:
-    return repository_root() / "app" / "patches"
-
-
-def require_string(data: dict, key: str, source: Path) -> str:
-    value = data.get(key)
-
-    if not isinstance(value, str) or not value.strip():
-        raise PatcherError(f"Missing string key '{key}' in {source}")
-
-    return value.strip()
-
-
-def load_patch_definition(path: Path) -> PatchDefinition:
-    patch_json_path = path / "patch.json"
-
-    if not patch_json_path.exists():
-        raise PatcherError(f"Missing patch.json: {patch_json_path}")
-
-    data = json.loads(patch_json_path.read_text(encoding="utf-8"))
-
-    patch_id = require_string(data, "id", patch_json_path)
-    title = require_string(data, "title", patch_json_path)
-    description = str(data.get("description", ""))
-
-    target = data.get("target")
-
-    if not isinstance(target, dict):
-        raise PatcherError(f"Missing target object in {patch_json_path}")
-
-    target_file = require_string(target, "file", patch_json_path)
-
-    raw_patches = data.get("patches")
-
-    if not isinstance(raw_patches, list) or not raw_patches:
-        raise PatcherError(f"Missing patches list in {patch_json_path}")
-
-    byte_patches: list[BytePatch] = []
-
-    for index, raw_patch in enumerate(raw_patches):
-        if not isinstance(raw_patch, dict):
-            raise PatcherError(f"Invalid patch entry #{index} in {patch_json_path}")
-
-        patch_type = raw_patch.get("type")
-
-        if patch_type != "bytes":
-            raise PatcherError(f"Unsupported patch type in {patch_json_path}: {patch_type}")
-
-        old_bytes = parse_hex_bytes(require_string(raw_patch, "oldBytes", patch_json_path))
-        new_bytes = parse_hex_bytes(require_string(raw_patch, "newBytes", patch_json_path))
-        size = parse_int(raw_patch.get("size", len(old_bytes)))
-
-        if len(old_bytes) != size:
-            raise PatcherError(
-                f"oldBytes size mismatch in {patch_json_path}: expected {size}, got {len(old_bytes)}"
-            )
-
-        if len(new_bytes) != size:
-            raise PatcherError(
-                f"newBytes size mismatch in {patch_json_path}: expected {size}, got {len(new_bytes)}"
-            )
-
-        if "fileOffset" not in raw_patch:
-            raise PatcherError(f"Missing fileOffset in {patch_json_path}")
-
-        byte_patches.append(
-            BytePatch(
-                patch_id=patch_id,
-                title=title,
-                target_file=target_file,
-                virtual_address=str(raw_patch.get("virtualAddress", "")),
-                file_offset=parse_int(raw_patch["fileOffset"]),
-                section=str(raw_patch.get("section", "")),
-                old_bytes=old_bytes,
-                new_bytes=new_bytes,
-                size=size,
-            )
-        )
-
-    return PatchDefinition(
-        patch_id=patch_id,
-        title=title,
-        description=description,
-        path=path,
-        byte_patches=byte_patches,
-    )
-
-
-def load_all_patches(patches_dir: Path) -> list[PatchDefinition]:
-    if not patches_dir.exists():
-        raise PatcherError(f"Patches directory does not exist: {patches_dir}")
-
-    patches: list[PatchDefinition] = []
-
-    for child in sorted(patches_dir.iterdir()):
-        if not child.is_dir():
-            continue
-
-        patch_json = child / "patch.json"
-
-        if not patch_json.exists():
-            continue
-
-        patches.append(load_patch_definition(child))
-
-    return patches
-
-
-def select_patches(
-    patches: list[PatchDefinition],
-    selected_ids: Iterable[str],
-    select_all: bool,
-) -> list[PatchDefinition]:
-    if select_all:
-        return patches
-
-    selected = list(selected_ids)
-
-    if not selected:
-        raise PatcherError("No patches selected. Pass patch ids or use --all.")
-
-    by_id = {patch.patch_id: patch for patch in patches}
-    result: list[PatchDefinition] = []
-
-    for patch_id in selected:
-        if patch_id not in by_id:
-            available = ", ".join(sorted(by_id))
-            raise PatcherError(f"Unknown patch id: {patch_id}. Available patches: {available}")
-
-        result.append(by_id[patch_id])
-
-    return result
-
-
-def unique_target_files(patches: list[PatchDefinition]) -> list[str]:
-    seen: set[str] = set()
-    files: list[str] = []
-
-    for patch in patches:
-        for byte_patch in patch.byte_patches:
-            if byte_patch.target_file in seen:
-                continue
-
-            seen.add(byte_patch.target_file)
-            files.append(byte_patch.target_file)
-
-    return files
-
-
-def resolve_target_file(game_path: Path, target_file: str) -> Path:
-    if game_path.is_file():
-        if game_path.name.lower() != target_file.lower():
-            raise PatcherError(
-                f"Game path points to a file, but expected {target_file}: {game_path}"
-            )
-
-        return game_path
-
-    if game_path.is_dir():
-        candidate = game_path / target_file
-
-        if candidate.exists():
-            return candidate
-
-        raise PatcherError(f"Target file not found: {candidate}")
-
-    raise PatcherError(f"Game path does not exist: {game_path}")
-
-
-def read_bytes(path: Path, offset: int, size: int) -> bytes:
-    with path.open("rb") as handle:
-        handle.seek(offset)
-        data = handle.read(size)
-
-    if len(data) != size:
-        raise PatcherError(
-            f"Unable to read {size} bytes at offset 0x{offset:x} from {path}"
-        )
-
-    return data
-
-
-def write_bytes(path: Path, offset: int, data: bytes) -> None:
-    with path.open("r+b") as handle:
-        handle.seek(offset)
-        handle.write(data)
-
-
-def backup_path(path: Path) -> Path:
-    return path.with_name(path.name + BACKUP_SUFFIX)
-
-
-def ensure_backup(path: Path) -> Path:
-    backup = backup_path(path)
-
-    if backup.exists():
-        info(f"Backup already exists: {backup}")
-        return backup
-
-    shutil.copy2(path, backup)
-    info(f"Backup created: {backup}")
-
-    return backup
-
-
-def patch_status(path: Path, byte_patch: BytePatch) -> str:
-    current = read_bytes(path, byte_patch.file_offset, byte_patch.size)
-
-    if current == byte_patch.old_bytes:
-        return "original"
-
-    if current == byte_patch.new_bytes:
-        return "patched"
-
-    return "unknown"
-
-
 def command_list(args: argparse.Namespace) -> int:
     patches = load_all_patches(args.patches_dir)
 
@@ -311,108 +49,52 @@ def command_list(args: argparse.Namespace) -> int:
 
 
 def command_status(args: argparse.Namespace) -> int:
-    patches = select_patches(
-        load_all_patches(args.patches_dir),
-        args.patch_ids,
-        args.all,
-    )
+    patches = select_patches(load_all_patches(args.patches_dir), args.patch_ids, args.all)
 
-    for patch in patches:
+    for status in get_status(args.game, patches):
         print("")
-        print(f"=== {patch.patch_id} ===")
-
-        for byte_patch in patch.byte_patches:
-            target = resolve_target_file(args.game, byte_patch.target_file)
-            status = patch_status(target, byte_patch)
-
-            print(f"Target: {target}")
-            print(f"VA: {byte_patch.virtual_address}")
-            print(f"Offset: 0x{byte_patch.file_offset:x}")
-            print(f"Status: {status}")
+        print(f"=== {status.patch_id} ===")
+        print(f"Target: {status.target}")
+        print(f"VA: {status.virtual_address}")
+        print(f"Offset: 0x{status.file_offset:x}")
+        print(f"Status: {status.status}")
 
     return 0
 
 
 def command_apply(args: argparse.Namespace) -> int:
-    patches = select_patches(
-        load_all_patches(args.patches_dir),
-        args.patch_ids,
-        args.all,
-    )
+    patches = select_patches(load_all_patches(args.patches_dir), args.patch_ids, args.all)
+    current_patch_id = None
 
-    for patch in patches:
-        print("")
-        print(f"=== Applying {patch.patch_id} ===")
+    for result in apply_patches(args.game, patches):
+        if result.patch_id != current_patch_id:
+            current_patch_id = result.patch_id
+            print("")
+            print(f"=== Applying {result.patch_id} ===")
 
-        for byte_patch in patch.byte_patches:
-            target = resolve_target_file(args.game, byte_patch.target_file)
-            status = patch_status(target, byte_patch)
-
-            info(f"Target: {target}")
-            info(f"Offset: 0x{byte_patch.file_offset:x}")
-            info(f"Status: {status}")
-
-            if status == "patched":
-                ok("Already patched.")
-                continue
-
-            if status != "original":
-                raise PatcherError(
-                    f"Unexpected bytes at offset 0x{byte_patch.file_offset:x}. "
-                    "Refusing to patch unknown file state."
-                )
-
-            ensure_backup(target)
-            write_bytes(target, byte_patch.file_offset, byte_patch.new_bytes)
-
-            new_status = patch_status(target, byte_patch)
-
-            if new_status != "patched":
-                raise PatcherError(f"Patch verification failed: {patch.patch_id}")
-
-            ok("Patch applied.")
+        info(f"Target: {result.target}")
+        info(f"Offset: 0x{result.file_offset:x}")
+        info(f"Status: {result.previous_status}")
+        ok(result.message)
 
     ok("Done.")
     return 0
 
 
 def command_rollback(args: argparse.Namespace) -> int:
-    patches = select_patches(
-        load_all_patches(args.patches_dir),
-        args.patch_ids,
-        args.all,
-    )
+    patches = select_patches(load_all_patches(args.patches_dir), args.patch_ids, args.all)
+    current_patch_id = None
 
-    for patch in patches:
-        print("")
-        print(f"=== Rolling back {patch.patch_id} ===")
+    for result in rollback_patches(args.game, patches):
+        if result.patch_id != current_patch_id:
+            current_patch_id = result.patch_id
+            print("")
+            print(f"=== Rolling back {result.patch_id} ===")
 
-        for byte_patch in patch.byte_patches:
-            target = resolve_target_file(args.game, byte_patch.target_file)
-            status = patch_status(target, byte_patch)
-
-            info(f"Target: {target}")
-            info(f"Offset: 0x{byte_patch.file_offset:x}")
-            info(f"Status: {status}")
-
-            if status == "original":
-                ok("Already original.")
-                continue
-
-            if status != "patched":
-                raise PatcherError(
-                    f"Unexpected bytes at offset 0x{byte_patch.file_offset:x}. "
-                    "Refusing to rollback unknown file state."
-                )
-
-            write_bytes(target, byte_patch.file_offset, byte_patch.old_bytes)
-
-            new_status = patch_status(target, byte_patch)
-
-            if new_status != "original":
-                raise PatcherError(f"Rollback verification failed: {patch.patch_id}")
-
-            ok("Patch rolled back.")
+        info(f"Target: {result.target}")
+        info(f"Offset: 0x{result.file_offset:x}")
+        info(f"Status: {result.previous_status}")
+        ok(result.message)
 
     ok("Done.")
     return 0
@@ -420,30 +102,19 @@ def command_rollback(args: argparse.Namespace) -> int:
 
 def command_restore_original(args: argparse.Namespace) -> int:
     patches = load_all_patches(args.patches_dir)
-    target_files = unique_target_files(patches)
-
-    if not target_files:
-        warn("No target files found in patch definitions.")
-        return 0
-
     restored = 0
 
-    for target_file in target_files:
-        target = resolve_target_file(args.game, target_file)
-        backup = backup_path(target)
-
+    for result in restore_original(args.game, patches):
         print("")
-        print(f"=== Restoring {target_file} ===")
-        info(f"Target: {target}")
-        info(f"Backup: {backup}")
+        print(f"=== Restoring {result.target.name} ===")
+        info(f"Target: {result.target}")
+        info(f"Backup: {result.backup}")
 
-        if not backup.exists():
-            warn("Backup not found.")
-            continue
-
-        shutil.copy2(backup, target)
-        restored += 1
-        ok("Original file restored from backup.")
+        if result.restored:
+            restored += 1
+            ok(result.message)
+        else:
+            warn(result.message)
 
     print("")
     ok(f"Done. Restored files: {restored}")
@@ -503,17 +174,8 @@ def add_game_argument(parser: argparse.ArgumentParser) -> None:
 
 
 def add_patch_selection_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "patch_ids",
-        nargs="*",
-        help="Patch ids to process.",
-    )
-
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Process all available patches.",
-    )
+    parser.add_argument("patch_ids", nargs="*", help="Patch ids to process.")
+    parser.add_argument("--all", action="store_true", help="Process all available patches.")
 
 
 def main(argv: list[str]) -> int:
