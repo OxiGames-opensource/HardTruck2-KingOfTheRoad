@@ -46,6 +46,9 @@ drive_c/
 steamapps/
 *.acf
 
+# PyInstaller
+*.spec
+
 # Python
 __pycache__/
 *.pyc
@@ -79,3 +82,10 @@ ghidra-work/
 # Local development notes
 dev-notes/*
 !dev-notes/README.md
+
+# Release artifacts
+app/release/Linux/*
+!app/release/Linux/.gitkeep
+
+app/release/Windows/*
+!app/release/Windows/.gitkeep

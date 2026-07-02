@@ -1,0 +1,29 @@
+services:
+  release-builder:
+    build:
+      context: ./services/release-builder
+      dockerfile: Dockerfile
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+        APP_USER: ${APP_USER:-app}
+
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+
+    container_name: ${COMPOSE_PROJECT_NAME}_release-builder
+
+    working_dir: /home/${APP_USER:-app}/www/${APP_PROJECT_NAME:-app}
+
+    volumes:
+      - ../app:/home/${APP_USER:-app}/www/${APP_PROJECT_NAME:-app}
+
+    command: tail -f /dev/null
+
+    tty: true
+    stdin_open: true
+
+    environment:
+      TERM: xterm-256color
+
+    networks:
+      - default
